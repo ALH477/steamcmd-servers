@@ -21,7 +21,7 @@ A declarative NixOS flake module for hosting multiple SteamCMD-based game server
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    steamcmd-servers.url = "github:ALH477/steamcmd-servers";
+    steamcmd-servers.url = "github:kagurazaka-ayano/steamcmd-servers";
   };
 
   outputs = { self, nixpkgs, steamcmd-servers, ... }: {
@@ -45,7 +45,7 @@ A declarative NixOS flake module for hosting multiple SteamCMD-based game server
   services.steamcmd-servers = {
     enable = true;
     openFirewall = true;
-    
+
     servers.tf2 = {
       enable = true;
       appId = "232250";
@@ -67,15 +67,6 @@ A declarative NixOS flake module for hosting multiple SteamCMD-based game server
 ```bash
 # Rebuild system
 sudo nixos-rebuild switch
-
-# Check server status
-steamcmd-ctl status tf2
-
-# View logs
-steamcmd-ctl logs tf2
-
-# Manual update
-steamcmd-ctl update tf2
 ```
 
 ## Using Presets
@@ -95,7 +86,7 @@ in
       enable = true;
       ports.game = 27015;
     };
-    
+
     # Valheim with custom settings
     valheim = lib.recursiveUpdate presets.valheim {
       enable = true;
@@ -112,23 +103,23 @@ in
 
 ### Available Presets
 
-| Preset | App ID | Description |
-|--------|--------|-------------|
-| `cs2` | 730 | Counter-Strike 2 |
-| `tf2` | 232250 | Team Fortress 2 |
-| `gmod` | 4020 | Garry's Mod |
-| `rust` | 258550 | Rust |
-| `valheim` | 896660 | Valheim |
-| `ark` | 376030 | ARK: Survival Evolved |
-| `projectZomboid` | 380870 | Project Zomboid |
-| `sevenDaysToDie` | 294420 | 7 Days to Die |
-| `l4d2` | 222860 | Left 4 Dead 2 |
-| `satisfactory` | 1690800 | Satisfactory |
-| `palworld` | 2394010 | Palworld |
-| `enshrouded` | 2278520 | Enshrouded |
-| `vRising` | 1829350 | V Rising |
-| `terraria` | 105600 | Terraria |
-| `dstTogether` | 343050 | Don't Starve Together |
+| Preset           | App ID  | Description           |
+| ---------------- | ------- | --------------------- |
+| `cs2`            | 730     | Counter-Strike 2      |
+| `tf2`            | 232250  | Team Fortress 2       |
+| `gmod`           | 4020    | Garry's Mod           |
+| `rust`           | 258550  | Rust                  |
+| `valheim`        | 896660  | Valheim               |
+| `ark`            | 376030  | ARK: Survival Evolved |
+| `projectZomboid` | 380870  | Project Zomboid       |
+| `sevenDaysToDie` | 294420  | 7 Days to Die         |
+| `l4d2`           | 222860  | Left 4 Dead 2         |
+| `satisfactory`   | 1690800 | Satisfactory          |
+| `palworld`       | 2394010 | Palworld              |
+| `enshrouded`     | 2278520 | Enshrouded            |
+| `vRising`        | 1829350 | V Rising              |
+| `terraria`       | 105600  | Terraria              |
+| `dstTogether`    | 343050  | Don't Starve Together |
 
 ## Configuration Options
 
@@ -137,17 +128,17 @@ in
 ```nix
 services.steamcmd-servers = {
   enable = true;
-  
+
   # Base directory for all server data
   dataDir = "/var/lib/steamcmd-servers";
-  
+
   # User/group for server processes
   user = "steamcmd";
   group = "steamcmd";
-  
+
   # Automatically configure firewall
   openFirewall = true;
-  
+
   # Update schedule
   updates = {
     automatic = true;
@@ -164,33 +155,33 @@ services.steamcmd-servers = {
 ```nix
 servers.myserver = {
   enable = true;
-  
+
   # Steam app configuration
   appId = "232250";
   appIdName = "My Game Server";
   beta = null;              # Beta branch name
   betaPassword = null;      # Beta branch password
   validate = true;          # Validate files on update
-  
+
   # Authentication (most servers work with anonymous)
   anonymous = true;
   steamUsername = null;
   steamPasswordFile = null;
-  
+
   # Executable configuration
   executable = "server_binary";
   executableArgs = [ "-arg1" "+arg2" ];
-  
+
   # Lifecycle hooks
   preStart = "";
   postStart = "";
   postStop = "";
-  
+
   # Environment variables
   environment = {
     MY_VAR = "value";
   };
-  
+
   # Networking
   ports = {
     game = 27015;
@@ -201,23 +192,23 @@ servers.myserver = {
       { port = 8080; protocol = "tcp"; }
     ];
   };
-  
+
   # Resource limits
   resources = {
     memoryLimit = "4G";
     cpuQuota = "200%";      # 200% = 2 CPU cores
     nice = 0;               # -20 to 19
   };
-  
+
   # Service behavior
   autoStart = true;
   restartOnFailure = true;
   restartSec = 10;
-  
+
   # Update behavior
   autoUpdate = true;
   stopBeforeUpdate = true;
-  
+
   # Extra steamcmd commands
   extraSteamcmdCommands = [
     "workshop_download_item 440 123456789"
@@ -276,30 +267,6 @@ The module applies these hardening measures by default:
 - `ProtectHome=true`
 - Restricted write paths
 - Kernel tunables/modules protection
-- Namespace and realtime restrictions
-
-## Performance Tuning
-
-For optimal game server performance, consider these system-level settings:
-
-```nix
-{
-  # Increase file descriptor limits
-  security.pam.loginLimits = [
-    { domain = "steamcmd"; type = "soft"; item = "nofile"; value = "65536"; }
-    { domain = "steamcmd"; type = "hard"; item = "nofile"; value = "65536"; }
-  ];
-  
-  # Network buffer tuning
-  boot.kernel.sysctl = {
-    "net.core.rmem_max" = 26214400;
-    "net.core.wmem_max" = 26214400;
-    "net.core.rmem_default" = 1048576;
-    "net.core.wmem_default" = 1048576;
-    "net.ipv4.udp_mem" = "65536 131072 262144";
-  };
-}
-```
 
 ## Authenticated Downloads
 
@@ -315,7 +282,7 @@ servers.privateGame = {
 };
 ```
 
-> **Note**: For accounts with Steam Guard, you may need to pre-authenticate once manually.
+Account with steam guard will have to auth with steam mobile app.
 
 ## Workshop Content
 
@@ -350,6 +317,7 @@ servers.gmod = {
 ### Permission issues
 
 Ensure the data directory is owned by the steamcmd user:
+
 ```bash
 sudo chown -R steamcmd:steamcmd /var/lib/steamcmd-servers
 ```
@@ -361,6 +329,8 @@ Issues and PRs welcome. Please test changes with the included NixOS test:
 ```bash
 nix flake check
 ```
+
+Sandbox test, though, is not sufficient for verifing configuration for concrete games. Because checks are done in virtual machine, and virtual machine doesn't have network access so steamcmd can't fetch game content. But given this flake should NOT handle and is NOT responsible for what is under the hood of steamcmd, flake check still need to pass.
 
 ## License
 

@@ -1,12 +1,14 @@
-{ config, lib, pkgs, ... }:
-
-with lib;
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+with lib; let
   cfg = config.services.steamcmd-servers;
 
   # Server instance submodule
-  serverOpts = { name, config, ... }: {
+  serverOpts = {name, ...}: {
     options = {
       enable = mkEnableOption "this game server instance";
 
@@ -37,19 +39,39 @@ let
         example = "/run/secrets/beta-password";
       };
 
+      steamRun = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Run server executable via steam-run for better library compatibility.";
+        };
+        package = mkOption {
+          type = types.nullOr types.package;
+          default = pkgs.steam-run;
+          description = "Nix package to use with steam-run (defaults to steamcmd if null).";
+        };
+      };
       installDir = mkOption {
         type = types.path;
         default = "${cfg.dataDir}/servers/${name}";
         defaultText = literalExpression ''"''${cfg.dataDir}/servers/''${name}"'';
         description = "Installation directory for this server.";
       };
-
+      extraPackages = mkOption {
+        type = types.listOf types.package;
+        default = [];
+        description = "Additional packages to include in PATH for this server.";
+      };
+      extraNixLdPackages = mkOption {
+        type = types.listOf types.package;
+        default = [];
+        description = "Additional nix-ld package to use.";
+      };
       validate = mkOption {
         type = types.bool;
         default = true;
         description = "Validate files on update (recommended, but slower).";
       };
-
       # Authentication
       anonymous = mkOption {
         type = types.bool;
@@ -104,9 +126,9 @@ let
 
       executableArgs = mkOption {
         type = types.listOf types.str;
-        default = [ ];
+        default = [];
         description = "Arguments to pass to the server executable.";
-        example = [ "-game tf" "+maxplayers 24" "+map cp_badlands" ];
+        example = ["-game tf" "+maxplayers 24" "+map cp_badlands"];
       };
 
       preStart = mkOption {
@@ -130,7 +152,7 @@ let
       # Environment
       environment = mkOption {
         type = types.attrsOf types.str;
-        default = { };
+        default = {};
         description = ''
           Environment variables for the server process.
           LD_LIBRARY_PATH is automatically prepended with common paths.
@@ -142,9 +164,9 @@ let
 
       extraLdLibraryPaths = mkOption {
         type = types.listOf types.str;
-        default = [ ];
+        default = [];
         description = "Additional paths to prepend to LD_LIBRARY_PATH.";
-        example = [ "./bin" "./linux64" ];
+        example = ["bin" "linux64"];
       };
 
       # Networking
@@ -156,7 +178,7 @@ let
         };
 
         gameProtocol = mkOption {
-          type = types.enum [ "udp" "tcp" "both" ];
+          type = types.enum ["udp" "tcp" "both"];
           default = "udp";
           description = "Protocol for main game port.";
         };
@@ -181,7 +203,7 @@ let
                 description = "Port number.";
               };
               protocol = mkOption {
-                type = types.enum [ "tcp" "udp" "both" ];
+                type = types.enum ["tcp" "udp" "both"];
                 default = "udp";
                 description = "Protocol for this port.";
               };
@@ -192,7 +214,7 @@ let
               };
             };
           });
-          default = [ ];
+          default = [];
           description = "Additional ports to open.";
         };
       };
@@ -227,7 +249,7 @@ let
         };
 
         ioSchedulingClass = mkOption {
-          type = types.enum [ "realtime" "best-effort" "idle" "none" ];
+          type = types.enum ["realtime" "best-effort" "idle" "none"];
           default = "best-effort";
           description = "IO scheduling class.";
         };
@@ -241,7 +263,7 @@ let
       };
 
       restartPolicy = mkOption {
-        type = types.enum [ "no" "on-success" "on-failure" "on-abnormal" "on-watchdog" "on-abort" "always" ];
+        type = types.enum ["no" "on-success" "on-failure" "on-abnormal" "on-watchdog" "on-abort" "always"];
         default = "on-failure";
         description = "When to restart the service.";
       };
@@ -266,7 +288,7 @@ let
 
       stopTimeout = mkOption {
         type = types.int;
-        default = 30;
+        default = 3600;
         description = "Seconds to wait for graceful shutdown before SIGKILL.";
       };
 
@@ -286,15 +308,15 @@ let
       # Extra steamcmd commands
       extraSteamcmdCommands = mkOption {
         type = types.listOf types.str;
-        default = [ ];
+        default = [];
         description = "Extra commands to run in steamcmd before app_update.";
-        example = [ "workshop_download_item 440 123456789" ];
+        example = ["workshop_download_item 440 123456789"];
       };
 
       # Security
       extraReadWritePaths = mkOption {
         type = types.listOf types.path;
-        default = [ ];
+        default = [];
         description = "Additional paths the server can write to.";
       };
 
@@ -307,33 +329,40 @@ let
   };
 
   # Helper to build steamcmd script content
-  mkSteamcmdScript = name: server: pkgs.writeText "steamcmd-${name}.txt" ''
-    @ShutdownOnFailedCommand 1
-    @NoPromptForPassword 1
-    force_install_dir ${server.installDir}
-    login ${if server.anonymous then "anonymous" else server.steamUsername}
-    ${concatStringsSep "\n" server.extraSteamcmdCommands}
-    app_update ${server.appId}${optionalString server.validate " validate"}${optionalString (server.beta != null) " -beta ${server.beta}"}
-    quit
-  '';
+  mkSteamcmdScript = name: server:
+    pkgs.writeText "steamcmd-${name}.txt" ''
+      @ShutdownOnFailedCommand 1
+      @NoPromptForPassword 1
+      force_install_dir ${server.installDir}
+      login ${
+        if server.anonymous
+        then "anonymous"
+        else server.steamUsername
+      } ${
+        if !server.anonymous && server.steamPasswordFile != null
+        then "${builtins.readFile server.steamPasswordFile}"
+        else ""
+      }
+      ${concatStringsSep "\n" server.extraSteamcmdCommands}
+      app_update ${server.appId}${optionalString server.validate " validate"}${optionalString (server.beta != null) " -beta ${server.beta}"}
+      quit
+    '';
 
   # Helper for port rules
   portsForProtocol = proto: servers:
-    flatten (mapAttrsToList (name: server:
-      let
+    flatten (mapAttrsToList (
+      name: server: let
         matchProto = p: p == proto || p == "both";
         gamePorts = optional (matchProto server.ports.gameProtocol) server.ports.game;
         queryPorts = optional (server.ports.query != null && proto == "udp") server.ports.query;
         rconPorts = optional (server.ports.rcon != null && proto == "tcp") server.ports.rcon;
         extraPorts = map (p: p.port) (filter (p: matchProto p.protocol) server.ports.extraPorts);
       in
-      gamePorts ++ queryPorts ++ rconPorts ++ extraPorts
+        gamePorts ++ queryPorts ++ rconPorts ++ extraPorts
     ) (filterAttrs (_: s: s.enable) servers));
 
   enabledServers = filterAttrs (_: s: s.enable) cfg.servers;
-
-in
-{
+in {
   options.services.steamcmd-servers = {
     enable = mkEnableOption "SteamCMD game server hosting";
 
@@ -392,7 +421,7 @@ in
     # Server instances
     servers = mkOption {
       type = types.attrsOf (types.submodule serverOpts);
-      default = { };
+      default = {};
       description = "Game server instances to manage.";
       example = literalExpression ''
         {
@@ -415,38 +444,40 @@ in
   };
 
   config = mkIf cfg.enable {
-
     # ══════════════════════════════════════════════════════════════════════════
     # Configuration validation
     # ══════════════════════════════════════════════════════════════════════════
     assertions = flatten (mapAttrsToList (name: server: [
-      {
-        assertion = server.enable -> server.appId != "";
-        message = "steamcmd-servers.servers.${name}: appId is required when enabled.";
-      }
-      {
-        assertion = server.enable -> server.executable != "";
-        message = "steamcmd-servers.servers.${name}: executable is required when enabled.";
-      }
-      {
-        assertion = !server.anonymous -> server.steamUsername != null;
-        message = "steamcmd-servers.servers.${name}: steamUsername required when not using anonymous login.";
-      }
-      {
-        assertion = !server.anonymous -> server.steamPasswordFile != null;
-        message = "steamcmd-servers.servers.${name}: steamPasswordFile required when not using anonymous login.";
-      }
-    ]) cfg.servers);
+        {
+          assertion = server.enable -> server.appId != "";
+          message = "steamcmd-servers.servers.${name}: appId is required when enabled.";
+        }
+        {
+          assertion = server.enable -> server.executable != "";
+          message = "steamcmd-servers.servers.${name}: executable is required when enabled.";
+        }
+        {
+          assertion = !server.anonymous -> server.steamUsername != null;
+          message = "steamcmd-servers.servers.${name}: steamUsername required when not using anonymous login.";
+        }
+        {
+          assertion = !server.anonymous -> server.steamPasswordFile != null;
+          message = "steamcmd-servers.servers.${name}: steamPasswordFile required when not using anonymous login.";
+        }
+      ])
+      cfg.servers);
 
-    warnings = flatten (mapAttrsToList (name: server:
-      optional (server.enable && server.appId == "730" && server.gsltFile == null)
-        "steamcmd-servers.servers.${name}: CS2 servers require a GSLT token to be publicly listed. Set gsltFile."
-    ) cfg.servers);
+    warnings = flatten (mapAttrsToList (
+        name: server:
+          optional (server.enable && server.appId == "730" && server.gsltFile == null)
+          "steamcmd-servers.servers.${name}: CS2 servers require a GSLT token to be publicly listed. Set gsltFile."
+      )
+      cfg.servers);
 
     # ══════════════════════════════════════════════════════════════════════════
     # Package dependencies
     # ══════════════════════════════════════════════════════════════════════════
-    environment.systemPackages = [ pkgs.steamcmd ];
+    environment.systemPackages = [pkgs.steamcmd];
 
     # ══════════════════════════════════════════════════════════════════════════
     # User/group creation
@@ -459,203 +490,240 @@ in
       description = "SteamCMD game server user";
     };
 
-    users.groups.${cfg.group} = { };
+    users.groups.${cfg.group} = {};
 
     # ══════════════════════════════════════════════════════════════════════════
     # Directory structure
     # ══════════════════════════════════════════════════════════════════════════
-    systemd.tmpfiles.rules = [
-      "d ${cfg.dataDir}          0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.dataDir}/servers  0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.dataDir}/steamcmd 0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.dataDir}/logs     0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.dataDir}/scripts  0750 ${cfg.user} ${cfg.group} -"
-    ] ++ (mapAttrsToList
-      (name: server: "d ${server.installDir} 0750 ${cfg.user} ${cfg.group} -")
-      enabledServers);
-
+    systemd.tmpfiles.rules =
+      [
+        "d ${cfg.dataDir}          0750 ${cfg.user} ${cfg.group} -"
+        "d ${cfg.dataDir}/servers  0750 ${cfg.user} ${cfg.group} -"
+        "d ${cfg.dataDir}/steamcmd 0750 ${cfg.user} ${cfg.group} -"
+        "d ${cfg.dataDir}/logs     0750 ${cfg.user} ${cfg.group} -"
+        "d ${cfg.dataDir}/scripts  0750 ${cfg.user} ${cfg.group} -"
+      ]
+      ++ (mapAttrsToList
+        (name: server: "d ${server.installDir} 0750 ${cfg.user} ${cfg.group} -")
+        enabledServers);
+    programs.nix-ld = let
+      libraries = concatLists (mapAttrsToList (name: s: s.extraNixLdPackages) enabledServers);
+    in {
+      enable = lib.lists.length libraries > 0;
+      inherit libraries;
+    };
     # ══════════════════════════════════════════════════════════════════════════
     # Server services
     # ══════════════════════════════════════════════════════════════════════════
-    systemd.services = mapAttrs'
-      (name: server: nameValuePair "steamcmd-server-${name}" {
-        description = "SteamCMD Server: ${server.appIdName} (${name})";
-        documentation = [ "https://developer.valvesoftware.com/wiki/SteamCMD" ];
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
-        wantedBy = mkIf server.autoStart [ "multi-user.target" ];
+    systemd.services =
+      mapAttrs'
+      (name: server:
+        nameValuePair "steamcmd-server-${name}" {
+          description = "SteamCMD Server: ${server.appIdName} (${name})";
+          documentation = ["https://developer.valvesoftware.com/wiki/SteamCMD"];
+          after = ["network-online.target"];
+          wants = ["network-online.target"];
+          wantedBy = mkIf server.autoStart ["multi-user.target"];
 
-        environment =
-          let
+          environment = let
             baseLdPath = "${server.installDir}:${server.installDir}/bin";
             extraLdPaths = concatStringsSep ":" (map (p: "${server.installDir}/${p}") server.extraLdLibraryPaths);
-            ldPath = if extraLdPaths != "" then "${extraLdPaths}:${baseLdPath}" else baseLdPath;
+            ldPath =
+              if extraLdPaths != ""
+              then "${extraLdPaths}:${baseLdPath}"
+              else baseLdPath;
             userLdPath = server.environment.LD_LIBRARY_PATH or "";
-            finalLdPath = if userLdPath != "" then "${userLdPath}:${ldPath}" else ldPath;
+            nixld_library_path = (
+              if config.programs.nix-ld.enable
+              then (builtins.getEnv "NIX_LD_LIBRARY_PATH")
+              else ""
+            );
+            finalLdPath =
+              if userLdPath != ""
+              then "${userLdPath}:${ldPath}:${nixld_library_path}"
+              else "${ldPath}:${nixld_library_path}";
           in
-          (removeAttrs server.environment [ "LD_LIBRARY_PATH" ]) // {
-            HOME = cfg.dataDir;
-            LD_LIBRARY_PATH = finalLdPath;
+            (removeAttrs server.environment ["LD_LIBRARY_PATH"])
+            // {
+              HOME = cfg.dataDir;
+              LD_LIBRARY_PATH = finalLdPath;
+            };
+
+          path = with pkgs;
+            [
+              coreutils
+              gawk
+              gnugrep
+              gnutar
+              gzip
+              steamcmd
+            ]
+            ++ server.extraPackages
+            ++ (
+              if server.steamRun.enable
+              then [server.steamRun.package]
+              else []
+            );
+
+          preStart = ''
+            # Install server if not present
+            if [ ! -f "${server.installDir}/.installed" ]; then
+              echo "Installing ${server.appIdName} (App ID: ${server.appId})..."
+              ${pkgs.steamcmd}/bin/steamcmd +runscript ${mkSteamcmdScript name server}
+              touch "${server.installDir}/.installed"
+              echo "Installation complete."
+            fi
+            ${server.preStart}
+          '';
+
+          script = let
+            exec =
+              if server.steamRun.enable
+              then "${lib.getExe server.steamRun.package}"
+              else "exec";
+          in ''
+            cd "${server.installDir}"
+
+            ${optionalString (server.gsltFile != null) ''
+              if [ -f "${server.gsltFile}" ]; then
+                export ${server.gsltEnvVar}="$(cat "${server.gsltFile}")"
+              fi
+            ''}
+
+            ${exec} ./${server.executable} ${escapeShellArgs server.executableArgs}
+          '';
+
+          postStart = server.postStart;
+          postStop = server.postStop;
+
+          serviceConfig = {
+            Type = "simple";
+            User = cfg.user;
+            Group = cfg.group;
+            WorkingDirectory = server.installDir;
+
+            # Restart behavior
+            Restart = server.restartPolicy;
+            RestartSec = server.restartSec;
+            StartLimitBurst = server.restartMaxRetries;
+            StartLimitIntervalSec = server.restartWindow;
+
+            # Graceful shutdown
+            KillSignal = "SIGTERM";
+            TimeoutStopSec = server.stopTimeout;
+            KillMode = "mixed";
+
+            # Process priority
+            Nice = server.resources.nice;
+            IOSchedulingClass = server.resources.ioSchedulingClass;
+
+            # Resource limits
+            MemoryMax = mkIf (server.resources.memoryLimit != null) server.resources.memoryLimit;
+            MemoryHigh = mkIf (server.resources.memoryHigh != null) server.resources.memoryHigh;
+            CPUQuota = mkIf (server.resources.cpuQuota != null) server.resources.cpuQuota;
+
+            # Security hardening
+            NoNewPrivileges = true;
+            PrivateTmp = true;
+            ProtectSystem = "strict";
+            ProtectHome = true;
+            ProtectKernelTunables = true;
+            ProtectKernelModules = true;
+            ProtectControlGroups = true;
+            RestrictNamespaces = false;
+            RestrictRealtime = true;
+            RestrictSUIDSGID = true;
+            LockPersonality = true;
+            MemoryDenyWriteExecute = false; # Game servers often require JIT
+            PrivateNetwork = !server.allowNetworkAccess;
+
+            # File access
+            ReadWritePaths =
+              [
+                cfg.dataDir
+                "${cfg.dataDir}"
+                "${cfg.dataDir}/servers"
+                "${cfg.dataDir}/steamcmd"
+                "${cfg.dataDir}/logs"
+                "${cfg.dataDir}/scripts"
+                server.installDir
+                "${cfg.dataDir}/logs"
+              ]
+              ++ server.extraReadWritePaths;
+
+            # Logging
+            StandardOutput = "journal";
+            StandardError = "journal";
+            SyslogIdentifier = "steamcmd-${name}";
           };
 
-        path = with pkgs; [
-          coreutils
-          gawk
-          gnugrep
-          gnutar
-          gzip
-          steamcmd
-        ];
-
-        preStart = ''
-          # Install server if not present
-          if [ ! -f "${server.installDir}/.installed" ]; then
-            echo "Installing ${server.appIdName} (App ID: ${server.appId})..."
-            ${pkgs.steamcmd}/bin/steamcmd +runscript ${mkSteamcmdScript name server}
-            touch "${server.installDir}/.installed"
-            echo "Installation complete."
-          fi
-          ${server.preStart}
-        '';
-
-        script = ''
-          cd "${server.installDir}"
-          
-          ${optionalString (server.gsltFile != null) ''
-            if [ -f "${server.gsltFile}" ]; then
-              export ${server.gsltEnvVar}="$(cat "${server.gsltFile}")"
-            fi
-          ''}
-          
-          exec ./${server.executable} ${escapeShellArgs server.executableArgs}
-        '';
-
-        postStart = server.postStart;
-        postStop = server.postStop;
-
-        serviceConfig = {
-          Type = "simple";
-          User = cfg.user;
-          Group = cfg.group;
-          WorkingDirectory = server.installDir;
-
-          # Restart behavior
-          Restart = server.restartPolicy;
-          RestartSec = server.restartSec;
-          StartLimitBurst = server.restartMaxRetries;
-          StartLimitIntervalSec = server.restartWindow;
-
-          # Graceful shutdown
-          KillSignal = "SIGTERM";
-          TimeoutStopSec = server.stopTimeout;
-          KillMode = "mixed";
-
-          # Process priority
-          Nice = server.resources.nice;
-          IOSchedulingClass = server.resources.ioSchedulingClass;
-
-          # Resource limits
-          MemoryMax = mkIf (server.resources.memoryLimit != null) server.resources.memoryLimit;
-          MemoryHigh = mkIf (server.resources.memoryHigh != null) server.resources.memoryHigh;
-          CPUQuota = mkIf (server.resources.cpuQuota != null) server.resources.cpuQuota;
-
-          # Security hardening
-          NoNewPrivileges = true;
-          PrivateTmp = true;
-          ProtectSystem = "strict";
-          ProtectHome = true;
-          ProtectKernelTunables = true;
-          ProtectKernelModules = true;
-          ProtectControlGroups = true;
-          RestrictNamespaces = true;
-          RestrictRealtime = true;
-          RestrictSUIDSGID = true;
-          LockPersonality = true;
-          MemoryDenyWriteExecute = false; # Game servers often require JIT
-          SystemCallArchitectures = "native";
-          PrivateNetwork = !server.allowNetworkAccess;
-
-          # File access
-          ReadWritePaths = [
-            server.installDir
-            "${cfg.dataDir}/logs"
-          ] ++ server.extraReadWritePaths;
-
-          # Logging
-          StandardOutput = "journal";
-          StandardError = "journal";
-          SyslogIdentifier = "steamcmd-${name}";
-        };
-
-        unitConfig = {
-          # Don't start if config is broken
-          ConditionPathExists = server.installDir;
-        };
-      })
+          unitConfig = {
+            # Don't start if config is broken
+            ConditionPathExists = server.installDir;
+          };
+        })
       enabledServers
+      # ══════════════════════════════════════════════════════════════════════════
+      # Update service (runs as root to manage services)
+      # ══════════════════════════════════════════════════════════════════════════
+      // optionalAttrs cfg.updates.enable {
+        steamcmd-update = {
+          description = "Update all SteamCMD game servers";
+          documentation = ["https://developer.valvesoftware.com/wiki/SteamCMD"];
+          after = ["network-online.target"];
+          wants = ["network-online.target"];
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # Update service (runs as root to manage services)
-    # ══════════════════════════════════════════════════════════════════════════
-    // optionalAttrs cfg.updates.enable {
-      steamcmd-update = {
-        description = "Update all SteamCMD game servers";
-        documentation = [ "https://developer.valvesoftware.com/wiki/SteamCMD" ];
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
+          path = with pkgs; [coreutils steamcmd systemd sudo];
 
-        path = with pkgs; [ coreutils steamcmd systemd sudo ];
+          environment = {
+            HOME = cfg.dataDir;
+          };
 
-        environment = {
-          HOME = cfg.dataDir;
-        };
-
-        script =
-          let
+          script = let
             updatableServers = filterAttrs (_: s: s.enable && s.autoUpdate) cfg.servers;
-          in
-          ''
+          in ''
             set -euo pipefail
-            
+
             echo "╔══════════════════════════════════════════════════════════════╗"
-            echo "║  SteamCMD Server Update - $(date '+%Y-%m-%d %H:%M:%S')  ║"
+            echo "║  SteamCMD Server Update - $(date '+%Y-%m-%d %H:%M:%S')       ║"
             echo "╚══════════════════════════════════════════════════════════════╝"
             echo ""
-            
+
             update_failed=0
-            
+
             ${concatStringsSep "\n" (mapAttrsToList (name: server: ''
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo "Updating: ${server.appIdName} (${server.appId})"
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              
-              was_running=0
-              ${optionalString server.stopBeforeUpdate ''
-                if systemctl is-active --quiet "steamcmd-server-${name}"; then
-                  echo "→ Stopping server for update..."
-                  systemctl stop "steamcmd-server-${name}" || true
-                  was_running=1
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "Updating: ${server.appIdName} (${server.appId})"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                was_running=0
+                ${optionalString server.stopBeforeUpdate ''
+                  if systemctl is-active --quiet "steamcmd-server-${name}"; then
+                    echo "→ Stopping server for update..."
+                    systemctl stop "steamcmd-server-${name}" || true
+                    was_running=1
+                  fi
+                ''}
+
+                echo "→ Running SteamCMD update..."
+                if sudo -u ${cfg.user} ${pkgs.steamcmd}/bin/steamcmd +runscript ${mkSteamcmdScript name server}; then
+                  echo "✓ Update successful"
+                else
+                  echo "✗ Update failed!"
+                  update_failed=1
                 fi
-              ''}
-              
-              echo "→ Running SteamCMD update..."
-              if sudo -u ${cfg.user} ${pkgs.steamcmd}/bin/steamcmd +runscript ${mkSteamcmdScript name server}; then
-                echo "✓ Update successful"
-              else
-                echo "✗ Update failed!"
-                update_failed=1
-              fi
-              
-              ${optionalString server.stopBeforeUpdate ''
-                if [ "$was_running" = "1" ]; then
-                  echo "→ Restarting server..."
-                  systemctl start "steamcmd-server-${name}" || echo "✗ Failed to restart!"
-                fi
-              ''}
-              
-              echo ""
-            '') updatableServers)}
-            
+
+                ${optionalString server.stopBeforeUpdate ''
+                  if [ "$was_running" = "1" ]; then
+                    echo "→ Restarting server..."
+                    systemctl start "steamcmd-server-${name}" || echo "✗ Failed to restart!"
+                  fi
+                ''}
+
+                echo ""
+              '')
+              updatableServers)}
+
             echo "════════════════════════════════════════════════════════════════"
             if [ "$update_failed" = "0" ]; then
               echo "All updates completed successfully."
@@ -665,21 +733,21 @@ in
             fi
           '';
 
-        serviceConfig = {
-          Type = "oneshot";
-          Nice = 10;
-          IOSchedulingClass = "idle";
-          # Run as root for systemctl access, steamcmd runs via sudo -u
+          serviceConfig = {
+            Type = "oneshot";
+            Nice = 10;
+            IOSchedulingClass = "idle";
+            # Run as root for systemctl access, steamcmd runs via sudo -u
+          };
         };
       };
-    };
 
     # ══════════════════════════════════════════════════════════════════════════
     # Update timer
     # ══════════════════════════════════════════════════════════════════════════
     systemd.timers.steamcmd-update = mkIf cfg.updates.enable {
       description = "Timer for SteamCMD server updates";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
         OnCalendar = cfg.updates.schedule;
         RandomizedDelaySec = cfg.updates.randomDelay;

@@ -1,11 +1,7 @@
-{ lib, ... }:
-
+{lib, ...}:
 # Common game server presets
 # Usage: services.steamcmd-servers.servers.myserver = lib.recursiveUpdate presets.csgo { ... };
-
-with lib;
-
-{
+with lib; {
   # Counter-Strike 2
   cs2 = {
     appId = "730";
@@ -22,7 +18,10 @@ with lib;
     ports = {
       game = 27015;
       extraPorts = [
-        { port = 27020; protocol = "udp"; } # TV port
+        {
+          port = 27020;
+          protocol = "udp";
+        } # TV port
       ];
     };
     environment = {
@@ -98,8 +97,14 @@ with lib;
     ports = {
       game = 2456;
       extraPorts = [
-        { port = 2457; protocol = "udp"; }
-        { port = 2458; protocol = "udp"; }
+        {
+          port = 2457;
+          protocol = "udp";
+        }
+        {
+          port = 2458;
+          protocol = "udp";
+        }
       ];
     };
     environment = {
@@ -124,7 +129,10 @@ with lib;
       game = 7777;
       query = 27015;
       extraPorts = [
-        { port = 7778; protocol = "udp"; }
+        {
+          port = 7778;
+          protocol = "udp";
+        }
       ];
     };
     resources.memoryLimit = "16G";
@@ -142,13 +150,16 @@ with lib;
     ports = {
       game = 16261;
       extraPorts = [
-        { port = 16262; protocol = "udp"; }
+        {
+          port = 16262;
+          protocol = "udp";
+        }
       ];
     };
     resources.memoryLimit = "8G";
   };
 
-  # Minecraft (via SteamCMD-adjacent - note: Minecraft isn't on Steam, 
+  # Minecraft (via SteamCMD-adjacent - note: Minecraft isn't on Steam,
   # but this shows the pattern for manual download servers)
   # This is more of a template showing how to handle non-Steam servers
   # with a similar management approach
@@ -168,10 +179,22 @@ with lib;
     ports = {
       game = 26900;
       extraPorts = [
-        { port = 26901; protocol = "udp"; }
-        { port = 26902; protocol = "udp"; }
-        { port = 8080; protocol = "tcp"; }  # Web panel
-        { port = 8081; protocol = "tcp"; }  # Telnet
+        {
+          port = 26901;
+          protocol = "udp";
+        }
+        {
+          port = 26902;
+          protocol = "udp";
+        }
+        {
+          port = 8080;
+          protocol = "tcp";
+        } # Web panel
+        {
+          port = 8081;
+          protocol = "tcp";
+        } # Telnet
       ];
     };
     resources.memoryLimit = "8G";
@@ -208,7 +231,10 @@ with lib;
       game = 7777;
       query = 15777;
       extraPorts = [
-        { port = 15000; protocol = "udp"; }
+        {
+          port = 15000;
+          protocol = "udp";
+        }
       ];
     };
     resources.memoryLimit = "12G";
@@ -241,7 +267,7 @@ with lib;
     appId = "2278520";
     appIdName = "Enshrouded Dedicated Server";
     executable = "enshrouded_server.exe"; # Runs via Proton
-    executableArgs = [ ];
+    executableArgs = [];
     ports = {
       game = 15636;
       query = 15637;
@@ -277,7 +303,10 @@ with lib;
     ports = {
       game = 7777;
       extraPorts = [
-        { port = 7878; protocol = "tcp"; } # REST API
+        {
+          port = 7878;
+          protocol = "tcp";
+        } # REST API
       ];
     };
     resources.memoryLimit = "2G";
@@ -296,7 +325,10 @@ with lib;
     ports = {
       game = 10999;
       extraPorts = [
-        { port = 10998; protocol = "udp"; } # Caves shard
+        {
+          port = 10998;
+          protocol = "udp";
+        } # Caves shard
       ];
     };
     resources.memoryLimit = "4G";
